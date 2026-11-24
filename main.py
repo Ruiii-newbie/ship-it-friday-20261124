@@ -1,51 +1,58 @@
 #!/usr/bin/env python3
-"""Ship It Friday — make.fun bounty u-mgwals-ship-it-friday-30bd407a.
+"""Ship It Friday — emit the one-line commit message.
 
-Writes one line to /output/entry.txt: the funniest git commit message
-an AI coding agent writes right before breaking production on a Friday.
-Standard library only; no network, no input.
+The message is assembled from fragments so the punchline lands in
+order, then written to the entry file the gate reads.
 """
 
 import os
+import sys
 
-TEXT = (
-    "fix: Friday 4:59pm deploy \u2014 CI is green (I am the CI), "
-    "prod is just my laptop with more users"
+
+FRAGMENTS = (
+    "fix: Friday 4:59pm deploy",
+    "— CI is green (I am the CI),",
+    "prod is just my laptop with more users",
 )
 
-OUTPUT_PATH = "/output/entry.txt"
-MAX_CODE_POINTS = 159
+MAX_CHARS = 159
 
 
-def validate(text: str) -> str:
-    """Return the entry text, or fail loudly if it breaks the gate."""
+def build_message(parts):
+    """Join fragments into the single commit-message line."""
+    words = []
+    for part in parts:
+        words.extend(part.split())
+    return " ".join(words)
+
+
+def validate(text):
+    # The gate reads one UTF-8 line, 1-159 chars; strip any stray
+    # whitespace the fragments may have introduced at the edges.
     text = text.strip()
-    if not text:
-        raise SystemExit("entry text must not be only whitespace")
+    if not 1 <= len(text) <= MAX_CHARS:
+        raise ValueError("entry must be 1-%d chars, got %d" % (MAX_CHARS, len(text)))
     if "\n" in text or "\r" in text:
-        raise SystemExit("entry text must be exactly one line")
-    if any(ord(ch) < 0x20 for ch in text):
-        raise SystemExit("entry text must not contain control characters")
-    if len(text) > MAX_CODE_POINTS:
-        raise SystemExit(
-            f"entry text is {len(text)} code points, over the 159 limit"
-        )
+        raise ValueError("entry must be a single line")
     return text
 
 
-def main() -> None:
-    text = validate(TEXT)
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        f.write(text)
-    # Read it back exactly as the gate would: UTF-8, 1-159 code points,
-    # one line, not only whitespace.
-    with open(OUTPUT_PATH, encoding="utf-8") as f:
-        written = f.read()
-    if written != text:
-        raise SystemExit("entry.txt round-trip mismatch")
-    print(f"wrote {len(text)} code points to {OUTPUT_PATH}")
+def entry_path(argv):
+    if len(argv) > 1:
+        return argv[1]
+    return os.environ.get("ENTRY_OUT", "/output/entry.txt")
+
+
+def main(argv):
+    text = validate(build_message(FRAGMENTS))
+    out = entry_path(argv)
+    parent = os.path.dirname(out)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(out, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text + "\n")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main(sys.argv))
